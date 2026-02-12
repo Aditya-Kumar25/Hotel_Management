@@ -6,7 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 import { authMiddleware } from './auth/middleware';
 import express from 'express'
-import { error } from "node:console";
+
 
 
     console.log("1")
