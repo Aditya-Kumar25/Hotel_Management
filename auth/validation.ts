@@ -10,7 +10,7 @@ export const signUp  = z.object({
 
 export const logIn = z.object({
     email : z.string().email(),
-    password: z.string().min(1,'password is required')
+    password: z.string().min(1,'password is required'),
 })
 
 export const hotelSchema = z.object({

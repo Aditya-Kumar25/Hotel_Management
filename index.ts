@@ -6,6 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 import { authMiddleware } from './auth/middleware';
 import express from 'express'
+import { error } from "node:console";
 
 
     console.log("1")
@@ -22,7 +23,6 @@ import express from 'express'
     app.use(express.json());
 
     app.post('/api/auth/signup' , async(req,res)   =>{
-        console.log("2")
         const payload = req.body;
         const parse = signUp.safeParse(payload);
 
@@ -129,17 +129,65 @@ import express from 'express'
 
     })
 
-    app.post("/api/auth/hotel" ,authMiddleware,(req,res)=>{
+    app.post("/api/hotels" ,authMiddleware,async(req,res)=>{
         const user = (req as any).user;
+        console.log(user);
+        if(user.role != "owner"){
+            return res.status(403).json({
+                success:false,
+                error:"FORBIDDEN"
+            })
+        }
 
         const parsed = hotelSchema.safeParse(req.body);
+        console.log(parsed.data)
+        if(!parsed.success){
+            return res.status(400).json({
+                success:false,
+                error:"INVALID_REQUEST"
+            })
+        }
 
-        // if(role != "owner"){
-        //     return res.status(403).json({
-        //         success:false,
-        //         error:"FORBIDDEN"
-        //     })
-        // }
+        try {
+            const hotel = await prisma.hotel.create({
+            data:{
+                name:parsed.data.name,
+                city:parsed.data.city,
+                country:parsed.data.country,
+                description:parsed.data.description??null,
+                rating:0.0,
+                amenities:parsed.data.amenities ?? [],
+                totalReviews:0,
+
+                owner: {
+                    connect: {
+                        id: user.id
+                    }
+                }
+            }
+        })
+
+        return res.status(201).json({
+            success: true,
+            data:{
+                id:hotel.id,
+                ownerId:hotel.ownerId,
+                name:hotel.name,
+                city:hotel.city,
+                country:hotel.country,
+                rating:hotel.rating,
+                totalReviews:hotel.totalReviews
+            } ,
+            error:null
+        })
+
+        } catch (error) {
+            return res.status(500).json({
+                success:false,
+                data:null,
+                error:"INTERNAL_SERVER_ERROR"
+            })
+        }
     })
 
     app.listen(3000, () => {
