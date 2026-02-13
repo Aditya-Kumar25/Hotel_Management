@@ -18,9 +18,15 @@ export const hotelSchema = z.object({
     city:z.string(),
     country:z.string(),
     description: z.string().optional(),
-    rating : z.number().multipleOf(0.1).optional(),
-    amenities : z.string().optional(),
+    rating : z.number().multipleOf(0.1).default(0.0),
+    amenities : z.array(z.string()).optional(),
     totalReviews : z.number().optional()    
 })
 
+export const roomSchema = z.object({
+    roomNumber:z.string(),
+    roomType:z.string(),
+    pricePerNight:z.number().multipleOf(0.1),
+    maxOccupancy:z.number()
+})
 

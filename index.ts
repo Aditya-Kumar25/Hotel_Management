@@ -1,14 +1,17 @@
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { signUp,logIn,hotelSchema } from './auth/validation';
+import { signUp,logIn,hotelSchema,roomSchema } from './auth/validation';
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 import { authMiddleware } from './auth/middleware';
 import express from 'express'
+import { safeParse, success } from "zod";
+import { connect } from "bun";
+import { id } from "zod/locales";
 
 
-
+    dotenv.config();
     console.log("1")
     const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL!,
@@ -16,7 +19,7 @@ import express from 'express'
 
     export const prisma = new PrismaClient({ adapter })
 
-    dotenv.config();
+    
 
     const app = express();
 
@@ -56,7 +59,7 @@ import express from 'express'
             phone:parse.data.phone ?? null
         }
         })
-        console.log("hello")
+
         res.status(201).json({success:true,data:{
             id:user.id,
             name:user.name,
@@ -175,8 +178,9 @@ import express from 'express'
                 name:hotel.name,
                 city:hotel.city,
                 country:hotel.country,
-                rating:hotel.rating,
-                totalReviews:hotel.totalReviews
+                rating:Number(hotel.rating),
+                totalReviews:hotel.totalReviews,
+                amenities:hotel.amenities
             } ,
             error:null
         })
@@ -188,6 +192,88 @@ import express from 'express'
                 error:"INTERNAL_SERVER_ERROR"
             })
         }
+    })
+
+    app.post("/api/hotels/:hotelId/rooms",authMiddleware, async(req,res)=>{
+        const user =  (req as any).user;
+        const hotelId  = req.params.hotelId as string;
+        const dataa = req.body;
+
+        const parsed = roomSchema.safeParse(dataa);
+
+       
+        if(!parsed.success){
+            return res.status(400).json({
+                success:false,
+                error:"INVALID_REQUEST"
+            })
+        }
+
+        const hotelexists = await prisma.hotel.findUnique({
+            where:{
+                id:hotelId
+            }
+        })
+
+        if(!hotelexists){
+            return res.status(404).json({
+                success:false,
+                error:"HOTEL_NOT_FOUND"
+            })
+        }
+         
+        if(hotelexists.ownerId !== user.id){
+            return res.status(403).json({
+                success:false,
+                error:"FORBIDDEN"
+            })
+        }
+
+        const {roomNumber} = parsed.data;
+
+        const roomexists = await prisma.room.findUnique({
+            where:{
+                hotelId_roomNumber:{
+                    hotelId,
+                    roomNumber
+                }
+            }
+        })
+
+        if(roomexists){
+            return res.status(400).json({
+                success:false,
+                error:"ROOM_ALREADY_EXISTS"
+            })
+        }
+
+        const room = await prisma.room.create({
+            data:{
+                roomNumber:parsed.data.roomNumber,
+                roomType :parsed.data.roomType,
+                pricePerNight : parsed.data.pricePerNight,
+                maxOccupancy:parsed.data.maxOccupancy,
+                hotel:{
+                    connect:{
+                        id:hotelId
+                    }
+                }
+            }
+        })
+        console.log(room)
+        return res.status(201).json({
+            success:true,
+            data:{
+                id:room.id,
+                hotelId:room.hotelId,
+                roomNumber:room.roomNumber,
+                roomType:room.roomType,
+                pricePerNight:Number(room.pricePerNight),
+                maxOccupancy:room.maxOccupancy
+            },
+            error:null
+        })
+
     })
 
     app.listen(3000, () => {
