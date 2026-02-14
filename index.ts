@@ -276,92 +276,119 @@ import { id } from "zod/locales";
 
     })
 
-    app.get("/api/hotels",authMiddleware, async (req, res) => {
-try{
-            const city = typeof req.query.city === "string" ? req.query.city : undefined;
-            const country = typeof req.query.country === "string" ? req.query.country : undefined;
-            const minPrice = typeof req.query.minPrice === "string" ? Number(req.query.minPrice) : undefined;
-            const maxPrice = typeof req.query.maxPrice === "string" ? Number(req.query.maxPrice) : undefined;
-            const minRating = typeof req.query.minRating === "string" ? Number(req.query.minRating) : undefined;
-            
-            const whereClause : any = {
-                AND:[
-                    city
-                    ?{
-                        city:{
-                            equals:city,
-                            mode:"insensitive"
-                        },
-                    }:{},
-                
-                country
-                    ?{
-                        country:{
-                            equals:country,
-                            mode:"insensitive"
-                        },
-                    }
-                    :{},
+    app.get("/api/hotels", authMiddleware, async (req, res) => {
+  try {
+    const city =
+      typeof req.query.city === "string" ? req.query.city : undefined;
 
-                minRating
-                        ?{
-                            rating:{
-                                gte:Number(minRating),
-                            },
-                        }:{},
-                minPrice||maxPrice
-                            ?{
-                                rooms:{
-                                    some:{
-                                        pricePerNight:{
-                                            gte:minPrice?Number(minPrice) : undefined,
-                                            lte : maxPrice?Number(maxPrice) :undefined,
-                                        },
-                                    },
-                                },
-                            }
-                            :{}
-                ],
-            };
+    const country =
+      typeof req.query.country === "string" ? req.query.country : undefined;
 
-            const hotels = await prisma.hotel.findMany({
-                where:whereClause,
-                include:{
-                    rooms:{
-                        select:{
-                            pricePerNight:true,
-                        },
-                    },
-                },
-            })
+    const minPrice =
+      typeof req.query.minPrice === "string"
+        ? Number(req.query.minPrice)
+        : undefined;
 
-            const resData = hotels.filter(hotel=>hotel.rooms.length>0)
-                            .map(hotel => ({
-                                id:hotel.id,
-                                name:hotel.name,
-                                description:hotel.description,
-                                city: hotel.city,
-                country: hotel.country,
-                amenities: hotel.amenities,
-                rating: hotel.rating,
-                totalReviews: hotel.totalReviews,
-                minPricePerNight: Math.min(...hotel.rooms.map(r => r.pricePerNight.toNumber())),
-            }));
+    const maxPrice =
+      typeof req.query.maxPrice === "string"
+        ? Number(req.query.maxPrice)
+        : undefined;
 
-        res.json({  
-            success: true,
-            data: resData,
-            error: null,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            data: null,
-            error: "INTERNAL_SERVER_ERROR",
-        });
+    const minRating =
+      typeof req.query.minRating === "string"
+        ? Number(req.query.minRating)
+        : undefined;
+
+    const AND: any[] = [];
+
+    if (city) {
+      AND.push({
+        city: {
+          equals: city,
+          mode: "insensitive",
+        },
+      });
     }
+
+    if (country) {
+      AND.push({
+        country: {
+          equals: country,
+          mode: "insensitive",
+        },
+      });
+    }
+
+    if (minRating) {
+      AND.push({
+        rating: {
+          gte: minRating,
+        },
+      });
+    }
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      AND.push({
+        rooms: {
+          some: {
+            pricePerNight: {
+              ...(minPrice !== undefined && { gte: minPrice }),
+              ...(maxPrice !== undefined && { lte: maxPrice }),
+            },
+          },
+        },
+      });
+    }
+
+    const hotels = await prisma.hotel.findMany({
+      where: AND.length > 0 ? { AND } : {},
+      include: {
+        rooms: {
+          where: {
+            pricePerNight: {
+              ...(minPrice !== undefined && { gte: minPrice }),
+              ...(maxPrice !== undefined && { lte: maxPrice }),
+            },
+          },
+          select: {
+            pricePerNight: true,
+          },
+        },
+      },
     });
+
+    const resData = hotels.map((hotel) => ({
+      id: hotel.id,
+      name: hotel.name,
+      description: hotel.description,
+      city: hotel.city,
+      country: hotel.country,
+      amenities: hotel.amenities,
+      rating: hotel.rating,
+      totalReviews: hotel.totalReviews,
+      minPricePerNight:
+        hotel.rooms.length > 0
+          ? Math.min(
+              ...hotel.rooms.map((r) => r.pricePerNight.toNumber())
+            )
+          : null,
+    }));
+
+    res.json({
+      success: true,
+      data: resData,
+      error: null,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      data: null,
+      error: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
 
 
 
