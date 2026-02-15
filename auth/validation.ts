@@ -30,3 +30,9 @@ export const roomSchema = z.object({
     maxOccupancy:z.number()
 })
 
+export const bookingSchema = z.object({
+    roomId : z.string(),
+    checkInDate : z.coerce.date(),
+    checkOutDate : z.coerce.date(),
+    guests : z.number()
+})

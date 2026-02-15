@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { signUp, logIn, hotelSchema, roomSchema } from "./auth/validation";
+import { signUp, logIn, hotelSchema, roomSchema, bookingSchema } from "./auth/validation";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import { authMiddleware } from "./auth/middleware";
@@ -428,6 +428,85 @@ app.get("/api/hotels/:hotelId",authMiddleware, async(req,res)=>{
     }
 })
 
+app.post("/api/bookings",authMiddleware,async(req,res)=>{
+    const user = (req as any).user;
+
+    if(user.role != "customer"){
+        return res.status(403).json({
+            success:false,
+            error:"FORBIDDEN"
+        })
+    }
+    const parsed = bookingSchema.safeParse(req.body);
+    if(!parsed.success){
+        return res.status(400).json({
+            success:false,
+            error:"INVALID_SCHEMA"
+        })
+    }
+
+    const room = await prisma.room.findUnique({
+      where:{id:parsed.data.roomId}
+    })
+    if(!room){
+      return res.status(400).json({
+        success:false,
+        error:"ROOM_NOT_AVAILABLE"
+      })
+    }
+
+    const checkIn = parsed.data.checkInDate;
+    const checkOut = parsed.data.checkOutDate;
+    const nights = (checkOut.getTime()-checkIn.getTime())/(1000*60*60*24);
+    if(nights<=0){
+      return res.status(400).json({
+        success:false,
+        error:"INVALID_DATES"
+      })
+    }
+    const totalPrice = nights * Number(room.pricePerNight);
+
+    console.log("nights:", nights);
+    console.log("room.pricePerNight:", room.pricePerNight);
+    console.log("typeof pricePerNight:", typeof room.pricePerNight);
+    console.log("totalPrice before create:", totalPrice);
+    
+
+    const booking = await prisma.booking.create({
+      data:{
+        userId:user.id,
+        roomId:room.id,
+        hotelId:room.hotelId,
+        checkInDate:parsed.data.checkInDate,
+        checkOutDate:parsed.data.checkOutDate,
+        guests:parsed.data.guests,
+        totalPrice
+      }
+    })
+  console.log("booking",booking)
+  console.log("raw totalPrice:", booking.totalPrice);
+  console.log("constructor:", booking.totalPrice.constructor.name);
+  console.log("Raw totalPrice:", booking.totalPrice);
+console.log("As string:", booking.totalPrice?.toString());
+console.log("As number:", booking.totalPrice?.toNumber());
+
+
+    res.status(201).json({
+      success:true,
+      data:{
+        id:booking.id,
+        userId:booking.userId,
+        roomId:booking.roomId,
+        hotelId:booking.hotelId,
+        checkInDate:booking.checkInDate,
+        checkOutDate:booking.checkOutDate,
+        guests:booking.guests,
+        totalprice:booking.totalPrice.toNumber(),
+        status:booking.status,
+        bookingDate:booking.bookingDate
+      },error:null
+    })
+})
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
 });
