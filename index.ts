@@ -6,6 +6,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import { authMiddleware } from "./auth/middleware";
 import express from "express";
+import { BookingStatus } from "./generated/prisma/client";
+
 import { success } from "zod";
 
 
@@ -544,9 +546,77 @@ app.post("/api/bookings",authMiddleware,async(req,res)=>{
         bookingDate:booking.bookingDate
       },error:null
     })
-
-
 })
+
+
+app.get("/api/bookings", authMiddleware, async (req, res) => {
+  const user = (req as any).user;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      data: null,
+      error: "UNAUTHORIZED"
+    });
+  }
+
+  try {
+    const status =
+      typeof req.query.status === "string"
+        ? (req.query.status as BookingStatus)
+        : undefined;
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        userId: user.id,
+        ...(status && { status })
+      },
+      include: {
+        hotel: {
+          select: { name: true }
+        },
+        room: {
+          select: {
+            roomNumber: true,
+            roomType: true
+          }
+        }
+      },
+      orderBy: {
+        bookingDate: "desc"
+      }
+    });
+
+    const responseData = bookings.map((b) => ({
+      id: b.id,
+      roomId: b.roomId,
+      hotelId: b.hotelId,
+      hotelName: b.hotel.name,
+      roomNumber: b.room.roomNumber,
+      roomType: b.room.roomType,
+      checkInDate: b.checkInDate,
+      checkOutDate: b.checkOutDate,
+      guests: b.guests,
+      totalPrice: Number(b.totalPrice),
+      status: b.status,
+      bookingDate: b.bookingDate
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: responseData,
+      error: null
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: "INTERNAL_SERVER_ERROR"
+    });
+  }
+});
+
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
 });
