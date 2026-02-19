@@ -33,6 +33,6 @@ export const roomSchema = z.object({
 export const bookingSchema = z.object({
     roomId : z.string(),
     checkInDate : z.coerce.date(),
-    checkOutDate : z.coerce.date(),
-    guests : z.number()
+    checkOutDate : z.coerce.date(),                                             
+    guests : z.number().max(10)
 })

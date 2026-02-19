@@ -16,7 +16,7 @@ datasource db {
 
 enum Role {
   customer
-  owner
+  owner 
 }
 
 enum BookingStatus {

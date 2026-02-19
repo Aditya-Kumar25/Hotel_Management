@@ -6,9 +6,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import { authMiddleware } from "./auth/middleware";
 import express from "express";
-import { safeParse, success } from "zod";
-import { connect } from "bun";
-import { id } from "zod/locales";
+import { success } from "zod";
+
 
 dotenv.config();
 console.log("1");
@@ -70,7 +69,6 @@ app.post("/api/auth/signup", async (req, res) => {
       error: null,
     });
   } catch (error) {
-    console.error(error);
     res.status(400).json({ msg: "Server error" });
   }
 });
@@ -137,7 +135,6 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.post("/api/hotels", authMiddleware, async (req, res) => {
   const user = (req as any).user;
-  console.log(user);
   if (user.role != "owner") {
     return res.status(403).json({
       success: false,
@@ -146,7 +143,6 @@ app.post("/api/hotels", authMiddleware, async (req, res) => {
   }
 
   const parsed = hotelSchema.safeParse(req.body);
-  console.log(parsed.data);
   if (!parsed.success) {
     return res.status(400).json({
       success: false,
@@ -261,7 +257,6 @@ app.post("/api/hotels/:hotelId/rooms", authMiddleware, async (req, res) => {
       },
     },
   });
-  console.log(room);
   return res.status(201).json({
     success: true,
     data: {
@@ -378,7 +373,6 @@ app.get("/api/hotels", authMiddleware, async (req, res) => {
       error: null,
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({
       success: false,
       data: null,
@@ -419,7 +413,6 @@ app.get("/api/hotels/:hotelId",authMiddleware, async(req,res)=>{
         error:null
     })
     } catch (e) {
-        console.error(e);
         return res.status(500).json({
             success:false,
             data:null,
@@ -433,44 +426,96 @@ app.post("/api/bookings",authMiddleware,async(req,res)=>{
 
     if(user.role != "customer"){
         return res.status(403).json({
+            
             success:false,
             error:"FORBIDDEN"
         })
     }
+   
     const parsed = bookingSchema.safeParse(req.body);
     if(!parsed.success){
         return res.status(400).json({
             success:false,
-            error:"INVALID_SCHEMA"
+            error:"INVALID_REQUEST"
         })
     }
 
+    
+    //checking guests capacity
+    if(parsed.data.guests>9){
+      return res.status(400).json({
+        success:false,
+        error:"INVALID_CAPACITY"
+      })
+    }
+
+    //room exists 
     const room = await prisma.room.findUnique({
       where:{id:parsed.data.roomId}
     })
     if(!room){
+      return res.status(404).json({
+        success:false,
+        error:"ROOM_NOT_FOUND"
+      })
+    }
+
+     //booking for past date
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const checkin = new Date(parsed.data.checkInDate);
+    const checkout = new Date(parsed.data.checkOutDate);
+
+    const referenceToday = new Date("2026-01-01");
+
+    //checking checkout before checkin
+    if(checkin>checkout){
+      return res.status(400).json({
+        success:false,
+        error:"INVALID_REQUEST"
+      })
+    }
+
+    if( checkin<referenceToday || checkout <= checkin){
+      return res.status(400).json({
+          success:false,
+          error:"INVALID_DATES"
+      })
+    }
+    
+    // checking for overlapping dates
+    const check = await prisma.booking.findFirst({
+      where:{
+        roomId:parsed.data.roomId,
+        AND:[
+          {
+            checkInDate :{
+              lt:checkout,
+            },
+          },
+          {
+            checkOutDate:{
+              gt:checkin,
+            },
+          },
+        ],
+      },
+    })
+
+    if(check){
       return res.status(400).json({
         success:false,
         error:"ROOM_NOT_AVAILABLE"
       })
     }
 
-    const checkIn = parsed.data.checkInDate;
-    const checkOut = parsed.data.checkOutDate;
-    const nights = (checkOut.getTime()-checkIn.getTime())/(1000*60*60*24);
-    if(nights<=0){
-      return res.status(400).json({
-        success:false,
-        error:"INVALID_DATES"
-      })
-    }
-    const totalPrice = nights * Number(room.pricePerNight);
+    // const checkIn = parsed.data.checkInDate;
+    // const checkOut = parsed.data.checkOutDate;
+    // const nights = (checkOut.getTime()-checkIn.getTime())/(1000*60*60*24);
 
-    console.log("nights:", nights);
-    console.log("room.pricePerNight:", room.pricePerNight);
-    console.log("typeof pricePerNight:", typeof room.pricePerNight);
-    console.log("totalPrice before create:", totalPrice);
-    
+    const nights = (checkout.getTime()-checkin.getTime())/(1000*60*60*24);
+    const totalPrice = Number(nights) * Number(room.pricePerNight) ;
 
     const booking = await prisma.booking.create({
       data:{
@@ -483,15 +528,8 @@ app.post("/api/bookings",authMiddleware,async(req,res)=>{
         totalPrice
       }
     })
-  console.log("booking",booking)
-  console.log("raw totalPrice:", booking.totalPrice);
-  console.log("constructor:", booking.totalPrice.constructor.name);
-  console.log("Raw totalPrice:", booking.totalPrice);
-console.log("As string:", booking.totalPrice?.toString());
-console.log("As number:", booking.totalPrice?.toNumber());
 
-
-    res.status(201).json({
+    return res.status(201).json({
       success:true,
       data:{
         id:booking.id,
@@ -501,11 +539,13 @@ console.log("As number:", booking.totalPrice?.toNumber());
         checkInDate:booking.checkInDate,
         checkOutDate:booking.checkOutDate,
         guests:booking.guests,
-        totalprice:booking.totalPrice.toNumber(),
+        totalPrice:Number(booking.totalPrice),
         status:booking.status,
         bookingDate:booking.bookingDate
       },error:null
     })
+
+
 })
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
