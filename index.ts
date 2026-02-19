@@ -512,10 +512,6 @@ app.post("/api/bookings",authMiddleware,async(req,res)=>{
       })
     }
 
-    // const checkIn = parsed.data.checkInDate;
-    // const checkOut = parsed.data.checkOutDate;
-    // const nights = (checkOut.getTime()-checkIn.getTime())/(1000*60*60*24);
-
     const nights = (checkout.getTime()-checkin.getTime())/(1000*60*60*24);
     const totalPrice = Number(nights) * Number(room.pricePerNight) ;
 
@@ -616,6 +612,100 @@ app.get("/api/bookings", authMiddleware, async (req, res) => {
     });
   }
 });
+
+app.put(
+  "/api/bookings/:bookingId/cancel",
+  authMiddleware,
+  async (req, res) => {
+    const user = (req as any).user;
+
+    //Unauthorized
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        data: null,
+        error: "UNAUTHORIZED"
+      });
+    }
+
+    const bookingId = req.params.bookingId as string;
+
+    try {
+      //Find booking
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId }
+      });
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          data: null,
+          error: "BOOKING_NOT_FOUND"
+        });
+      }
+
+      //Must be your booking
+      if (booking.userId !== user.id) {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          error: "FORBIDDEN"
+        });
+      }
+
+      // 4️⃣ Already cancelled
+      if (booking.status === BookingStatus.cancelled) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: "ALREADY_CANCELLED"
+        });
+      }
+
+      //24-hour cancellation rule
+      const now = new Date();
+      const checkIn = new Date(booking.checkInDate);
+
+      const diffInMs = checkIn.getTime() - now.getTime();
+      const diffInHours = diffInMs / (1000 * 60 * 60);
+
+      if (diffInHours < 24) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: "CANCELLATION_DEADLINE_PASSED"
+        });
+      }
+
+      // Update booking
+      const updated = await prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: BookingStatus.cancelled,
+          cancelledAt: new Date()
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: updated.id,
+          status: updated.status,
+          cancelledAt: updated.cancelledAt
+        },
+        error: null
+      });
+
+    } catch (err) {
+      return res.status(500).json({
+        success: false,
+        data: null,
+        error: "INTERNAL_SERVER_ERROR"
+      });
+    }
+  }
+);
+
 
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
