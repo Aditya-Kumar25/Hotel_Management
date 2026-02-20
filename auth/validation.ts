@@ -26,7 +26,7 @@ export const hotelSchema = z.object({
 export const roomSchema = z.object({
     roomNumber:z.string(),
     roomType:z.string(),
-    pricePerNight:z.number().multipleOf(0.1),
+    pricePerNight:z.number().positive(),
     maxOccupancy:z.number()
 })
 
@@ -35,4 +35,10 @@ export const bookingSchema = z.object({
     checkInDate : z.coerce.date(),
     checkOutDate : z.coerce.date(),                                             
     guests : z.number().max(10)
+})
+
+export const reviewSchema = z.object({
+    bookingId : z.string(),
+    rating : z.number(),
+    comment : z.string().optional()
 })

@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { signUp, logIn, hotelSchema, roomSchema, bookingSchema } from "./auth/validation";
+import { signUp, logIn, hotelSchema, roomSchema, bookingSchema, reviewSchema } from "./auth/validation";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import { authMiddleware } from "./auth/middleware";
@@ -706,9 +706,97 @@ app.put("/api/bookings/:bookingId/cancel",authMiddleware,async (req, res) => {
 );
 
 
-// app.post("/api/reviews",authMiddleware, async (req,res)=>{
+app.post("/api/reviews",authMiddleware, async (req,res)=>{
+      const user = (req as any ).user;
 
-// })
+      if(user.role != "customer"){
+        return res.status(403).json({
+          success : false,
+          data:null,
+          error : "FORBIDDEN"
+        })
+      }
+
+      const parsed = reviewSchema.safeParse(req.body);
+      if(!parsed.success){
+        return res.status(400).json({
+          success : false,
+          data:null,
+          error : "INVALID_REQUEST"
+        })
+      }
+
+      const { bookingId,rating,comment } = parsed.data;
+
+      if(rating<1 || rating>5){
+        return res.status(400).json({
+          success:false,
+          data:null,
+          error:"INVALID_REQUEST"
+        })
+    }
+
+      const booking = await prisma.booking.findUnique({
+        where:{
+          id: bookingId
+        }
+      })
+      
+      if(!booking){
+        return res.status(404).json({
+          success:false,
+          data:null,
+          error:"BOOKING_NOT_FOUND"
+        })
+      }
+      if(booking.userId != user.id){
+          return res.status(400).json({
+            success : false,
+            data:null,
+            error : "BOOKING_NOT_ELIGIBLE"
+          })
+      }
+      if(booking.status != BookingStatus.confirmed){
+        return res.status(400).json({
+          success:false,
+          data:null,
+          error:"BOOKING_NOT_ELIGIBLE"
+        })
+      }
+      const referenceToday = new Date("2026-01-01");
+      const checkout = new Date(booking.checkOutDate);
+
+      if(checkout>referenceToday){
+        return res.status(400).json({
+          success:false,
+          data:null,
+          error:"BOOKING_NOT_ELIGIBLE"
+        })
+      }
+
+      const review = await prisma.review.create({
+        data:{
+          bookingId : bookingId,
+          userId : user.id,
+          hotelId : booking.hotelId,
+          rating : rating,
+          comment : comment
+        }
+      })
+
+      res.status(201).json({
+        success:true,
+        data:{
+          id:review.id,
+          userId:review.userId,
+          hotelId:review.hotelId,
+          bookingId:review.bookingId,
+          rating:review.rating,
+          comment:review.comment
+        },
+        error:null
+      })
+})
 
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
