@@ -486,30 +486,31 @@ app.post("/api/bookings",authMiddleware,async(req,res)=>{
       })
     }
     
-    // checking for overlapping dates
+    // checking for overlapping dates, ignoring cancelled bookings
     const check = await prisma.booking.findFirst({
-      where:{
-        roomId:parsed.data.roomId,
-        AND:[
+      where: {
+        roomId: parsed.data.roomId,
+        status: { not: BookingStatus.cancelled },
+        AND: [
           {
-            checkInDate :{
-              lt:checkout,
+            checkInDate: {
+              lt: checkout,
             },
           },
           {
-            checkOutDate:{
-              gt:checkin,
+            checkOutDate: {
+              gt: checkin,
             },
           },
         ],
       },
-    })
+    });
 
-    if(check){
+    if (check) {
       return res.status(400).json({
-        success:false,
-        error:"ROOM_NOT_AVAILABLE"
-      })
+        success: false,
+        error: "ROOM_NOT_AVAILABLE"
+      });
     }
 
     const nights = (checkout.getTime()-checkin.getTime())/(1000*60*60*24);
@@ -613,10 +614,7 @@ app.get("/api/bookings", authMiddleware, async (req, res) => {
   }
 });
 
-app.put(
-  "/api/bookings/:bookingId/cancel",
-  authMiddleware,
-  async (req, res) => {
+app.put("/api/bookings/:bookingId/cancel",authMiddleware,async (req, res) => {
     const user = (req as any).user;
 
     //Unauthorized
@@ -653,7 +651,7 @@ app.put(
         });
       }
 
-      // 4️⃣ Already cancelled
+      //Already cancelled
       if (booking.status === BookingStatus.cancelled) {
         return res.status(400).json({
           success: false,
@@ -677,6 +675,7 @@ app.put(
         });
       }
 
+      
       // Update booking
       const updated = await prisma.booking.update({
         where: { id: bookingId },
@@ -706,6 +705,10 @@ app.put(
   }
 );
 
+
+// app.post("/api/reviews",authMiddleware, async (req,res)=>{
+
+// })
 
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
